@@ -28,7 +28,7 @@ def get_new_temp_range_bits(val):
 	rep[i] = 1.0
 	return rep
 	
-def get_new_day(val):
+def get_new_day_month_bits(val):
 	rep = [0.0] * 5
 	if val >= 244:
 		rep[4] = 1.0
@@ -42,24 +42,94 @@ def get_new_day(val):
 		rep[0] = 1.0
 	return rep
 
+def get_new_day_10bit(val):
+	#121-273 (152 total / 10 bits ~= 16 days/bit)
+	val = val - 121
+	val = int(val / 15.2)
+	rep = [0.0] * 10
+	rep[val] = 1.0
+	return rep
+
+def print_usage():
+	print "USAGE: python [<source-file>.py] [<number-of-inputs>] [<temp-index>] [<day-index>] [<input-file>] [(opt)<output-file>]"
+
+def bad_args(argv):
+	argc = len(argv)
+	if argc < 5 or argc > 6:
+		return True
+	return False
+
+def parse_header(fin, fout, num_vars, new_num_vars):
+	fpos = 0
+	while True:
+		fpos = fin.tell()
+		line = fin.readline()
+		if len(line) == 0:
+			print "EOF before header parsed"
+			return False
+		line_list = line.split(" ")
+		if num(line_list[0]):
+			fin.seek(fpos)
+			return True
+		if num(line_list[-1]):
+			if int(line_list[-1]) == num_vars:
+				line_list[-1] = str(new_num_vars)
+				line = " ".join(map(str, line_list))
+				line += "\n"
+		fout.write(line)
+		
+def num(s):
+	try:
+		float(s)
+		return True
+	except:
+		return False
 
 if __name__ == "__main__":
-	argc = len(sys.argv)
-	if argc < 2 or argc > 3:
-		print "USAGE: python <source-file>.py <input-file> (output-file)"
+	
+	bits_adding = 10 + 10 - 2
+	if bad_args(sys.argv):
+		print_usage()
+		sys.exit()
+
+	try:
+		num_vars, temp_index, day_index = map(int, sys.argv[1:4])
+		fin, fout = open_files(*sys.argv[4:])
+	except:
+		print "Error in arguments"
+		print_usage()
+		sys.exit()
+
+	if not parse_header(fin, fout, num_vars, num_vars + bits_adding):
+		print "Error in header, are you doing it wrong?"
+		print_usage()
 		sys.exit()
 	
-	fin, fout = open_files(*sys.argv[1:])
 	eof = False
+	first, second = 0, 0
+	temp_first = True
+	if temp_index > day_index:
+		temp_first = False
+		first = day_index
+		second = temp_index
+	else:
+		first = temp_index
+		second = day_index
 	while not eof:
 		line = fin.readline().split(" ")
-		if len(line) < 14:
+		if len(line) < num_vars:
 			eof = True
 			continue
-		new_line = get_new_temp_range_bits(float(line[0]))
-		new_line.extend(line[1:5])
-		new_line.extend(get_new_day(float(line[5])))
-		new_line.extend(line[6:])
+		new_line = line[0:first]
+		if temp_first:
+			new_line.extend(get_new_temp_range_bits(float(line[first])))
+		else:
+			new_line.extend(get_new_day_10bit(float(line[first])))	
+		new_line.extend(line[first + 1: second])
+		if temp_first:
+			new_line.extend(get_new_day_10bit(float(line[second])))	
+		else:
+			new_line.extend(get_new_temp_range_bits(float(line[second])))
+		new_line.extend(line[second + 1:])
 		fout.write(" ".join(map(str, new_line)))
-		
 	
